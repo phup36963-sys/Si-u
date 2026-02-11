@@ -1,0 +1,9 @@
+Package: com.phup36963.netping
+Name: NetPing Pro
+Depends: mobilesubstrate
+Version: 1.0
+Architecture: iphoneos-arm
+Description: Fake Lag & VPN Bypass cho iPhone 13 (iOS 18)
+Maintainer: phup36963
+Author: phup36963
+Section: Tweaks
