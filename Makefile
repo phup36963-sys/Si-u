@@ -3,7 +3,7 @@ export ARCHS = arm64 arm64e
 export TARGET = iphone:clang:latest:15.0
 
 include $(THEOS)/makefiles/common.mk
-
+THEOS = /opt/theos
 TWEAK_NAME = NetPingPro
 NetPingPro_FILES = Tweak.mm
 NetPingPro_CFLAGS = -fobjc-arc -I./include
