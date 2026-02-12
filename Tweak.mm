@@ -3,94 +3,95 @@
 #import <substrate.h>
 #import <objc/runtime.h>
 
-#import "h5ggEngine.h"
 #import "FloatButton.h"
-#import "AppWinController.h"
 
-// ===============================
-// GLOBAL STATE
-// ===============================
+static UIWindow *floatWindow = nil;
+static FloatButton *floatBtn = nil;
 
-static BOOL isLagging = NO;
-static BOOL isVPNActive = NO;
+#pragma mark - Create Floating UI (iOS 13+ Scene Safe)
 
-#pragma mark - h5ggEngine Hook
+static void createFloatingButton() {
 
-static void (*orig_setFloatTolerance)(id, SEL, NSString *);
+    if (floatWindow) return;
 
-static void new_setFloatTolerance(id self, SEL _cmd, NSString *arg1) {
-    if ([arg1 floatValue] > 0) {
-        isLagging = YES;
-        orig_setFloatTolerance(self, _cmd, @"0.0000000001");
-    } else {
-        isLagging = NO;
-        orig_setFloatTolerance(self, _cmd, arg1);
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+
+        NSLog(@"[NetPing] Creating Float Window");
+
+        // Lấy active UIWindowScene (iOS 13+)
+        UIWindowScene *activeScene = nil;
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]] &&
+                scene.activationState == UISceneActivationStateForegroundActive) {
+                activeScene = (UIWindowScene *)scene;
+                break;
+            }
+        }
+
+        if (!activeScene) {
+            NSLog(@"[NetPing] No active scene found");
+            return;
+        }
+
+        floatWindow = [[UIWindow alloc] initWithWindowScene:activeScene];
+        floatWindow.frame = [UIScreen mainScreen].bounds;
+        floatWindow.backgroundColor = [UIColor clearColor];
+        floatWindow.windowLevel = UIWindowLevelAlert + 100;
+        floatWindow.hidden = NO;
+
+        floatBtn = [[FloatButton alloc] initWithFrame:CGRectMake(120, 250, 65, 65)];
+        floatBtn.backgroundColor = [UIColor colorWithRed:1 green:0 blue:0 alpha:0.85];
+        floatBtn.layer.cornerRadius = 32.5;
+        floatBtn.clipsToBounds = YES;
+
+        [floatBtn setTitle:@"NP" forState:UIControlStateNormal];
+        [floatBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+
+        // Drag Gesture
+        UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc] initWithTarget:floatBtn
+                                                action:@selector(handlePan:)];
+        [floatBtn addGestureRecognizer:pan];
+
+        [floatWindow addSubview:floatBtn];
+        [floatWindow makeKeyAndVisible];
+
+        NSLog(@"[NetPing] Float Button Created");
+    });
 }
 
-#pragma mark - AppWinController Hook
+#pragma mark - Drag Implementation
 
-static void (*orig_startVPNService)(id, SEL);
+@interface FloatButton (Drag)
+- (void)handlePan:(UIPanGestureRecognizer *)gesture;
+@end
 
-static void new_startVPNService(id self, SEL _cmd) {
-    isVPNActive = YES;
-    NSLog(@"[DVS] VPN Simulator Started");
-    
-    if (orig_startVPNService) {
-        orig_startVPNService(self, _cmd);
-    }
+@implementation FloatButton (Drag)
+
+- (void)handlePan:(UIPanGestureRecognizer *)gesture {
+
+    CGPoint translation = [gesture translationInView:self.superview];
+
+    self.center = CGPointMake(self.center.x + translation.x,
+                              self.center.y + translation.y);
+
+    [gesture setTranslation:CGPointZero inView:self.superview];
 }
 
-#pragma mark - FloatButton Hooks
-
-static void (*orig_setHidden)(id, SEL, BOOL);
-static void new_setHidden(id self, SEL _cmd, BOOL hidden) {
-    orig_setHidden(self, _cmd, hidden);
-}
-
-static void (*orig_updatePosition)(id, SEL, CGPoint);
-static void new_updatePosition(id self, SEL _cmd, CGPoint point) {
-    orig_updatePosition(self, _cmd, point);
-}
+@end
 
 #pragma mark - Constructor
 
 __attribute__((constructor))
 static void init() {
-    NSLog(@"[DVS] NetPing Dylib Initialized for iOS 18");
 
-    Class engineClass = objc_getClass("h5ggEngine");
-    if (engineClass) {
-        MSHookMessageEx(engineClass,
-                        @selector(setFloatTolerance:),
-                        (IMP)new_setFloatTolerance,
-                        (IMP *)&orig_setFloatTolerance);
-    }
+    NSLog(@"[NetPing] Dylib Loaded (iOS 18+)");
 
-    Class vpnClass = objc_getClass("AppWinController");
-    if (vpnClass) {
-        MSHookMessageEx(vpnClass,
-                        @selector(startVPNService),
-                        (IMP)new_startVPNService,
-                        (IMP *)&orig_startVPNService);
-    }
-
-    Class floatClass = objc_getClass("FloatButton");
-    if (floatClass) {
-        MSHookMessageEx(floatClass,
-                        @selector(setHidden:),
-                        (IMP)new_setHidden,
-                        (IMP *)&orig_setHidden);
-
-        MSHookMessageEx(floatClass,
-                        @selector(updatePosition:),
-                        (IMP)new_updatePosition,
-                        (IMP *)&orig_updatePosition);
-    }
-
-    // Delay 5s tránh crash khi game load
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+    // Delay tránh crash khi game chưa active scene
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
                    dispatch_get_main_queue(), ^{
-        NSLog(@"[DVS] Delayed UI injection ready");
+
+        createFloatingButton();
+
     });
 }
