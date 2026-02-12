@@ -1,12 +1,13 @@
 ARCHS = arm64 arm64e
-TARGET = iphone:clang:latest
+TARGET = iphone:clang:14.5
 
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = NetPingPro
 
-NetPingPro_FILES = Tweak.mm
-NetPingPro_CFLAGS = -fobjc-arc -I./include
-NetPingPro_FRAMEWORKS = UIKit Foundation JavaScriptCore CoreGraphics SystemConfiguration
+NetPingPro_FILES = Tweak.mm FloatButton.mm
+NetPingPro_CFLAGS = -fobjc-arc
+NetPingPro_FRAMEWORKS = UIKit Foundation NetworkExtension
+NetPingPro_LDFLAGS = -lsubstrate
 
 include $(THEOS_MAKE_PATH)/tweak.mk
