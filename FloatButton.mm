@@ -1,5 +1,4 @@
 #import "FloatButton.h"
-#import <NetworkExtension/NetworkExtension.h>
 
 static UIWindow *floatWindow = nil;
 static FloatButton *floatBtn = nil;
@@ -21,7 +20,8 @@ static FloatButton *floatBtn = nil;
         [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self addGestureRecognizer:pan];
 
-        [self addTarget:self action:@selector(showMenu)
+        [self addTarget:self
+                 action:@selector(showMenu)
        forControlEvents:UIControlEventTouchUpInside];
     }
     return self;
@@ -36,7 +36,7 @@ static FloatButton *floatBtn = nil;
     [gesture setTranslation:CGPointZero inView:self.superview];
 }
 
-#pragma mark - Active Window (iOS 18 safe)
+#pragma mark - Active Window (iOS 18 Safe)
 
 - (UIWindow *)activeWindow {
 
@@ -85,34 +85,27 @@ static FloatButton *floatBtn = nil;
                                               style:UIAlertActionStyleCancel
                                             handler:nil]];
 
-    [[self activeWindow].rootViewController
-        presentViewController:alert animated:YES completion:nil];
+    UIWindow *window = [self activeWindow];
+    if (window.rootViewController) {
+        [window.rootViewController presentViewController:alert
+                                                animated:YES
+                                              completion:nil];
+    }
 }
 
-#pragma mark - Send to VPN
+#pragma mark - Send Config (FIXED VERSION)
 
 - (void)sendVPNCommandRate:(NSInteger)rate mode:(NSString *)mode {
 
-    [NETunnelProviderManager loadAllFromPreferencesWithCompletionHandler:
-     ^(NSArray<NETunnelProviderManager *> *managers, NSError *error) {
+    // 🔥 Dùng App Group thay vì sendProviderMessage
+    NSUserDefaults *defaults =
+    [[NSUserDefaults alloc] initWithSuiteName:@"group.com.netping.shared"];
 
-        if (managers.count == 0) return;
+    [defaults setInteger:rate forKey:@"blockRate"];
+    [defaults setObject:mode forKey:@"blockMode"];
+    [defaults synchronize];
 
-        NETunnelProviderSession *session =
-        (NETunnelProviderSession *)managers.firstObject.connection;
-
-        NSDictionary *msg = @{
-            @"rate": @(rate),
-            @"mode": mode
-        };
-
-        NSData *data =
-        [NSJSONSerialization dataWithJSONObject:msg options:0 error:nil];
-
-        [session sendProviderMessage:data responseHandler:^(NSData *responseData) {
-            NSLog(@"[NetPing] Command sent");
-        }];
-    }];
+    NSLog(@"[NetPing] Saved config rate=%ld mode=%@", (long)rate, mode);
 }
 
 @end
