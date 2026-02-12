@@ -6,6 +6,8 @@
 static void (*orig_applicationDidBecomeActive)(id, SEL, UIApplication *);
 static BOOL hasInjectedOverlay = NO;
 
+#pragma mark - Hooked Method
+
 static void replaced_applicationDidBecomeActive(id self,
                                                 SEL _cmd,
                                                 UIApplication *application)
@@ -19,14 +21,20 @@ static void replaced_applicationDidBecomeActive(id self,
                    dispatch_get_main_queue(), ^{
 
         if (!hasInjectedOverlay) {
-            restoreOverlayIfNeeded();
+
+            if (&restoreOverlayIfNeeded != NULL) {
+                restoreOverlayIfNeeded();
+            }
+
             hasInjectedOverlay = YES;
         }
     });
 }
 
+#pragma mark - Constructor
+
 __attribute__((constructor))
-static void init()
+static void init(void)
 {
     NSLog(@"[NetPing] Loaded");
 
@@ -44,7 +52,11 @@ static void init()
                    dispatch_get_main_queue(), ^{
 
         if (!hasInjectedOverlay) {
-            restoreOverlayIfNeeded();
+
+            if (&restoreOverlayIfNeeded != NULL) {
+                restoreOverlayIfNeeded();
+            }
+
             hasInjectedOverlay = YES;
         }
     });
