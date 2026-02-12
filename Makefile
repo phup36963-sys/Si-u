@@ -1,6 +1,6 @@
 # Thiết lập cho iPhone 13 (A15 - arm64e)
 export ARCHS = arm64 arm64e
-export TARGET = iphone:clang:
+export TARGET = iphone:clang:14.5
 
 include $(THEOS)/makefiles/common.mk
 THEOS = /opt/theos
