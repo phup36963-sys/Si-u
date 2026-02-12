@@ -1,58 +1,96 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <substrate.h>
+#import <objc/runtime.h>
+
 #import "h5ggEngine.h"
 #import "FloatButton.h"
 #import "AppWinController.h"
 
-// Biến quản lý trạng thái
+// ===============================
+// GLOBAL STATE
+// ===============================
+
 static BOOL isLagging = NO;
 static BOOL isVPNActive = NO;
 
-// --- 1. LOGIC FAKE LAG (NGỪNG) ---
-// Tận dụng hàm setFloatTolerance trong h5ggEngine để làm chậm tiến trình
-%hook h5ggEngine
-- (void)setFloatTolerance:(NSString *)arg1 {
+#pragma mark - h5ggEngine Hook
+
+static void (*orig_setFloatTolerance)(id, SEL, NSString *);
+
+static void new_setFloatTolerance(id self, SEL _cmd, NSString *arg1) {
     if ([arg1 floatValue] > 0) {
         isLagging = YES;
-        // Ghi đè giá trị cực nhỏ để ép Engine quét liên tục gây độ trễ mạng giả
-        %orig(@"0.0000000001"); 
+        orig_setFloatTolerance(self, _cmd, @"0.0000000001");
     } else {
         isLagging = NO;
-        %orig;
+        orig_setFloatTolerance(self, _cmd, arg1);
     }
 }
-%end
 
-// --- 2. LOGIC VPN (FAKE STATUS) ---
-// Giả lập trạng thái kết nối thông qua lớp vỏ Controller
-%hook AppWinController
-- (void)startVPNService {
+#pragma mark - AppWinController Hook
+
+static void (*orig_startVPNService)(id, SEL);
+
+static void new_startVPNService(id self, SEL _cmd) {
     isVPNActive = YES;
-    // Có thể thêm code thực tế để bóp băng thông tại đây
     NSLog(@"[DVS] VPN Simulator Started");
-}
-%end
-
-// --- 3. LOGIC NÚT NỔI (FLOAT BUTTON) ---
-// Điều khiển ẩn/hiện và vị trí dựa trên FloatButton.h
-%hook FloatButton
-- (void)setHidden:(_Bool)arg1 {
-    // Nếu đang trong trận, có thể ép nút luôn hiện để tránh lỗi mất nút
-    %orig(arg1);
-}
-
-- (void)updatePosition:(struct CGPoint)point {
-    // Lưu tọa độ để không bị văng khỏi màn hình khi xoay
-    %orig(point);
-}
-%end
-
-// --- KHỞI TẠO (CONSTRUCTOR) ---
-%ctor {
-    NSLog(@"[DVS] NetPing Dylib Initialized for iOS 18");
     
-    // Trì hoãn nạp Menu 5 giây để tránh lỗi văng "aaaaa" khi mở game
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        // Code để nạp menu.html vào UIWindow
+    if (orig_startVPNService) {
+        orig_startVPNService(self, _cmd);
+    }
+}
+
+#pragma mark - FloatButton Hooks
+
+static void (*orig_setHidden)(id, SEL, BOOL);
+static void new_setHidden(id self, SEL _cmd, BOOL hidden) {
+    orig_setHidden(self, _cmd, hidden);
+}
+
+static void (*orig_updatePosition)(id, SEL, CGPoint);
+static void new_updatePosition(id self, SEL _cmd, CGPoint point) {
+    orig_updatePosition(self, _cmd, point);
+}
+
+#pragma mark - Constructor
+
+__attribute__((constructor))
+static void init() {
+    NSLog(@"[DVS] NetPing Dylib Initialized for iOS 18");
+
+    Class engineClass = objc_getClass("h5ggEngine");
+    if (engineClass) {
+        MSHookMessageEx(engineClass,
+                        @selector(setFloatTolerance:),
+                        (IMP)new_setFloatTolerance,
+                        (IMP *)&orig_setFloatTolerance);
+    }
+
+    Class vpnClass = objc_getClass("AppWinController");
+    if (vpnClass) {
+        MSHookMessageEx(vpnClass,
+                        @selector(startVPNService),
+                        (IMP)new_startVPNService,
+                        (IMP *)&orig_startVPNService);
+    }
+
+    Class floatClass = objc_getClass("FloatButton");
+    if (floatClass) {
+        MSHookMessageEx(floatClass,
+                        @selector(setHidden:),
+                        (IMP)new_setHidden,
+                        (IMP *)&orig_setHidden);
+
+        MSHookMessageEx(floatClass,
+                        @selector(updatePosition:),
+                        (IMP)new_updatePosition,
+                        (IMP *)&orig_updatePosition);
+    }
+
+    // Delay 5s tránh crash khi game load
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        NSLog(@"[DVS] Delayed UI injection ready");
     });
 }
