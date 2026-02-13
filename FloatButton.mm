@@ -3,6 +3,15 @@
 #import "FloatWindow.h"
 #import "FloatButton.h"
 
+// --- 1. Khai báo Interface (Để sửa lỗi undeclared identifier) ---
+@interface NetPingAction : NSObject
++ (void)handleMove:(UIPanGestureRecognizer *)p;
+@end
+
+// Biến static để quản lý bộ nhớ trong dylib
+static FloatWindow *overlayWindow = nil;
+static UIButton *floatButton = nil;
+
 #pragma mark - FloatWindow Implementation
 
 @implementation FloatWindow
@@ -11,13 +20,13 @@
     self = [super initWithWindowScene:scene];
     if (self) {
         self.backgroundColor = [UIColor clearColor];
-        // TRICK 1: Sử dụng mức ưu tiên cực cao. 
-        // Trên iOS 18 đời đầu, 2.1e9 là giới hạn tối đa để đè cả hệ thống.
+        
+        // Vượt rào: Mức ưu tiên Window cao nhất có thể trên iOS 18 "cổ"
         self.windowLevel = UIWindowLevelStatusBar + 1000000; 
         self.userInteractionEnabled = YES;
         self.hidden = NO;
         
-        // TRICK 2: Ép Window không bị ẩn khi Scene của App chính bị suspend
+        // Ép lớp layer luôn nằm trên cùng (zPosition cực đại)
         self.layer.zPosition = FLT_MAX;
     }
     return self;
@@ -25,84 +34,90 @@
 
 - (BOOL)canBecomeKeyWindow { return NO; }
 
-// Chỉ cho phép tương tác tại vùng của Nút bấm
+// Cơ chế hitTest để chơi game mượt mà không bị cản bởi Window
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *view = [super hitTest:point withEvent:event];
-    // Nếu chạm vào vùng trống của Window, trả về nil để tương tác xuyên xuống Free Fire
-    if (view == self) return nil;
+    if (view == self) {
+        return nil; // Trả về nil để touch xuyên qua Window xuống Game (Free Fire)
+    }
     return view;
 }
 @end
 
-#pragma mark - Overlay Logic
+#pragma mark - NetPingAction Implementation (Fix lỗi class definition)
 
-static FloatWindow *overlayWindow = nil;
-static UIButton *floatButton = nil;
-
-// TRICK 3: Hàm xử lý kéo thả nút (Pan Gesture)
-void handlePan(UIPanGestureRecognizer *gesture) {
-    CGPoint translation = [gesture translationInView:overlayWindow];
-    floatButton.center = CGPointMake(floatButton.center.x + translation.x, 
-                                     floatButton.center.y + translation.y);
-    [gesture setTranslation:CGPointZero inView:overlayWindow];
+@implementation NetPingAction
++ (void)handleMove:(UIPanGestureRecognizer *)p {
+    if (overlayWindow && floatButton) {
+        CGPoint t = [p translationInView:overlayWindow];
+        floatButton.center = CGPointMake(floatButton.center.x + t.x, floatButton.center.y + t.y);
+        [p setTranslation:CGPointZero inView:overlayWindow];
+    }
 }
+@end
+
+#pragma mark - Overlay Logic
 
 void createNetPingOverlay(void) {
     if (overlayWindow) return;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindowScene *activeScene = nil;
+
+        // Lấy Scene đang hoạt động để bám vào (Vượt sandbox iOS 18)
         for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]]) {
                 activeScene = (UIWindowScene *)scene;
-                // Ưu tiên scene đang active nhưng không dừng lại nếu không tìm thấy
                 if (scene.activationState == UISceneActivationStateForegroundActive) break;
             }
         }
 
         if (!activeScene) return;
 
-        // Khởi tạo Window lách luật
+        // Tạo Window
         overlayWindow = [[FloatWindow alloc] initWithWindowScene:activeScene];
         overlayWindow.frame = [UIScreen mainScreen].bounds;
 
+        // Tạo Nút NP
         floatButton = [UIButton buttonWithType:UIButtonTypeCustom];
         floatButton.frame = CGRectMake(100, 200, 65, 65);
-        floatButton.backgroundColor = [[UIColor redColor] colorWithAlphaComponent:0.8];
+        floatButton.backgroundColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.8];
         floatButton.layer.cornerRadius = 32.5;
         floatButton.layer.borderWidth = 2;
         floatButton.layer.borderColor = [UIColor whiteColor].CGColor;
+        
         [floatButton setTitle:@"NP" forState:UIControlStateNormal];
+        [floatButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        floatButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
 
-        // Thêm kéo thả
-        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:floatButton action:nil];
-        // Sử dụng block hoặc target để xử lý di chuyển
-        [floatButton addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:[NetPingAction class] action:@selector(handleMove:)]];
+        // Gesture di chuyển nút
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:[NetPingAction class] 
+                                                                               action:@selector(handleMove:)];
+        [floatButton addGestureRecognizer:pan];
 
         [overlayWindow addSubview:floatButton];
         
-        // TRICK 4: Ép Window luôn hiển thị bất chấp trạng thái App
+        // Ép Window hiển thị cưỡng bức
         [overlayWindow makeKeyAndVisible];
         overlayWindow.hidden = NO;
         
-        NSLog(@"[NetPing] Overlay Injected & Bypassing...");
+        NSLog(@"[NetPing] Overlay đã kích hoạt - Bypass Ready");
     });
 }
 
-// Lớp hỗ trợ xử lý action cho nút
-@implementation NetPingAction
-+ (void)handleMove:(UIPanGestureRecognizer *)p {
-    CGPoint t = [p translationInView:overlayWindow];
-    floatButton.center = CGPointMake(floatButton.center.x + t.x, floatButton.center.y + t.y);
-    [p setTranslation:CGPointZero inView:overlayWindow];
+// Hàm khôi phục nếu cần
+void restoreOverlayIfNeeded(void) {
+    if (!overlayWindow) {
+        createNetPingOverlay();
+    }
 }
-@end
 
-// TRICK 5: Constructor tự động chạy khi dylib được nạp vào
+#pragma mark - Constructor (Dylib Injection)
+
 __attribute__((constructor))
 static void initialize() {
-    // Đợi 2 giây sau khi app khởi động để tránh bị hệ thống reset window
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    // Đợi 3 giây sau khi game load để tránh bị system xóa window trong lúc boot
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         createNetPingOverlay();
     });
 }
