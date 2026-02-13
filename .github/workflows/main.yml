@@ -1,4 +1,4 @@
-name: Build iOS
+name: Build iOS Dylib
 
 on:
   push:
@@ -25,16 +25,23 @@ jobs:
 
       - name: Setup environment
         run: |
+          # Thêm các cờ vượt rào cản hệ thống vào ENV
           echo "ARCHS=arm64 arm64e" >> $GITHUB_ENV
+          echo "TARGET=iphone:clang:latest:15.0" >> $GITHUB_ENV
 
-      - name: Build tweak
+      - name: Build Dylib
         run: |
           export THEOS=$HOME/theos
+          # Lệnh 'make' thuần sẽ tạo ra dylib trong thư mục .theos/obj/
           make clean
-          make package FINALPACKAGE=1
+          make FINALPACKAGE=1
+          
+          # Vượt rào: Ký lại dylib với quyền đặc biệt (entitlements) nếu có file xml
+          # Nếu không có file xml, ldid vẫn giúp dylib được chấp nhận bởi các công cụ sideload
+          find .theos/obj -name "*.dylib" -exec ldid -S {} \;
 
-      - name: Upload deb
+      - name: Upload Dylib
         uses: actions/upload-artifact@v4
         with:
-          name: NetPingPro
-          path: packages/*.deb
+          name: NetPingPro-Dylib
+          path: .theos/obj/*.dylib
